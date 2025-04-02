@@ -48,13 +48,12 @@
     </style>
 </head>
 <body>
-    <canvas id="glCanvas"></canvas>
+    <canvas id="glCanvas" width="640" height="480"></canvas>
     
-    <div id="overlay">
-        <div id="viewMode">View Mode: Rat's View</div>
-        <div id="position">Position: X: 0.00, Y: 0.00, Z: 0.00</div>
-        <div id="terrain">Terrain Height: 0.00</div>
-    </div>
+    <div id="fps" style="position: absolute; top: 10px; left: 10px; color: white; background-color: rgba(0,0,0,0.5); padding: 5px;">FPS: --</div>
+    <div id="viewMode" style="position: absolute; top: 35px; left: 10px; color: white; background-color: rgba(0,0,0,0.5); padding: 5px;">View Mode: --</div>
+    <div id="position" style="position: absolute; top: 60px; left: 10px; color: white; background-color: rgba(0,0,0,0.5); padding: 5px;">Position: --</div>
+    <div id="terrain" style="position: absolute; top: 85px; left: 10px; color: white; background-color: rgba(0,0,0,0.5); padding: 5px;">Terrain Height: --</div>
     
     <div id="controls">
         <p><strong>Controls:</strong> <span id="hideControls">[Hide]</span></p>
