@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Terrain Flyover</title>
+    <link rel="icon" href="data:,">
+    <style>
+        body { margin: 0; overflow: hidden; font-family: Arial, sans-serif; }
+        canvas { width: 100%; height: 100%; display: block; }
+        #overlay {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            color: white;
+            background-color: rgba(0, 0, 0, 0.5);
+            padding: 10px;
+            border-radius: 5px;
+            font-size: 14px;
+            pointer-events: none;
+        }
+        #controls {
+            position: absolute;
+            bottom: 10px;
+            left: 10px;
+            color: white;
+            background-color: rgba(0, 0, 0, 0.5);
+            padding: 10px;
+            border-radius: 5px;
+            font-size: 14px;
+            max-width: 300px;
+        }
+        #hideControls {
+            color: white;
+            text-decoration: underline;
+            cursor: pointer;
+        }
+        .control-group {
+            margin-bottom: 10px;
+        }
+        .control-group p {
+            margin: 4px 0;
+        }
+        .control-header {
+            font-weight: bold;
+            margin-bottom: 5px;
+            color: #aaddff;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="glCanvas"></canvas>
+    
+    <div id="overlay">
+        <div id="viewMode">View Mode: Rat's View</div>
+        <div id="position">Position: X: 0.00, Y: 0.00, Z: 0.00</div>
+        <div id="terrain">Terrain Height: 0.00</div>
+    </div>
+    
+    <div id="controls">
+        <p><strong>Controls:</strong> <span id="hideControls">[Hide]</span></p>
+        
+        <div class="control-group">
+            <div class="control-header">Movement</div>
+            <p>W / ↑ - Move forward</p>
+            <p>S / ↓ - Move backward</p>
+            <p>A / ← - Move left</p>
+            <p>D / → - Move right</p>
+            <p>Q - Move up (in observation mode)</p>
+            <p>E - Move down (in observation mode)</p>
+            <p>Shift - Hold for faster movement</p>
+        </div>
+        
+        <div class="control-group">
+            <div class="control-header">Camera</div>
+            <p>Mouse Drag - Look around</p>
+            <p>V - Toggle view mode (Rat's/Observation)</p>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gl-matrix/2.8.1/gl-matrix-min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <script src="main.js"></script>
+    <script>
+        // Add functionality to hide controls
+        document.getElementById('hideControls').addEventListener('click', function() {
+            const controls = document.getElementById('controls');
+            if (controls.style.display === 'none') {
+                controls.style.display = 'block';
+                this.textContent = '[Hide]';
+            } else {
+                controls.style.display = 'none';
+                this.textContent = '[Show]';
+            }
+        });
+    </script>
+</body>
+</html>
