@@ -29,6 +29,23 @@
             font-size: 14px;
             max-width: 300px;
         }
+
+        #controls input[type="range"] {
+            width: 120px;
+            margin: 0 10px;
+            vertical-align: middle;
+        }
+
+        #controls label {
+            display: inline-block;
+            width: 60px;
+        }
+
+        #controls span:not(#hideControls) {
+            display: inline-block;
+            width: 40px;
+            text-align: right;
+        }
         #hideControls {
             color: white;
             text-decoration: underline;
@@ -49,15 +66,19 @@
 </head>
 <body>
     <canvas id="glCanvas" width="640" height="480"></canvas>
-    
-    <div id="fps" style="position: absolute; top: 10px; left: 10px; color: white; background-color: rgba(0,0,0,0.5); padding: 5px;">FPS: --</div>
-    <div id="viewMode" style="position: absolute; top: 35px; left: 10px; color: white; background-color: rgba(0,0,0,0.5); padding: 5px;">View Mode: --</div>
-    <div id="position" style="position: absolute; top: 60px; left: 10px; color: white; background-color: rgba(0,0,0,0.5); padding: 5px;">Position: --</div>
-    <div id="terrain" style="position: absolute; top: 85px; left: 10px; color: white; background-color: rgba(0,0,0,0.5); padding: 5px;">Terrain Height: --</div>
-    
+
+    <div class="info-panel" style="position: absolute; top: 10px; left: 10px; color: white;">
+        <div id="fps" style="background-color: rgba(0,0,0,0.5); padding: 5px; margin-bottom: 5px;">FPS: --</div>
+        <div id="viewMode" style="background-color: rgba(0,0,0,0.5); padding: 5px; margin-bottom: 5px;">View Mode: --</div>
+        <div id="position" style="background-color: rgba(0,0,0,0.5); padding: 5px; margin-bottom: 5px;">Position: --</div>
+        <div id="terrain" style="background-color: rgba(0,0,0,0.5); padding: 5px; margin-bottom: 5px;">Terrain Height: --</div>
+        <div id="seed" style="background-color: rgba(0,0,0,0.5); padding: 5px; margin-bottom: 5px;">Terrain Seed: --</div>
+        <div id="instructions" style="background-color: rgba(0,0,0,0.5); padding: 5px;">Press R to regenerate terrain</div>
+    </div>
+
     <div id="controls">
         <p><strong>Controls:</strong> <span id="hideControls">[Hide]</span></p>
-        
+
         <div class="control-group">
             <div class="control-header">Movement</div>
             <p>W / ↑ - Move forward</p>
@@ -68,16 +89,41 @@
             <p>E - Move down (in observation mode)</p>
             <p>Shift - Hold for faster movement</p>
         </div>
-        
+
         <div class="control-group">
             <div class="control-header">Camera</div>
             <p>Mouse Drag - Look around</p>
             <p>V - Toggle view mode (Rat's/Observation)</p>
         </div>
+
+        <div class="control-group">
+            <div class="control-header">Terrain</div>
+            <p>R - Regenerate terrain with new seed</p>
+            <div>
+                <label for="noiseScale">Scale:</label>
+                <input type="range" id="noiseScale" min="0.01" max="0.2" step="0.01" value="0.05">
+                <span id="noiseScaleValue">0.05</span>
+            </div>
+            <div>
+                <label for="noiseAmplitude">Height:</label>
+                <input type="range" id="noiseAmplitude" min="0.5" max="3.0" step="0.1" value="1.8">
+                <span id="noiseAmplitudeValue">1.8</span>
+            </div>
+            <div>
+                <label for="terrainFlatness">Flatness:</label>
+                <input type="range" id="terrainFlatness" min="0" max="1" step="0.05" value="0.6">
+                <span id="terrainFlatnessValue">0.6</span>
+            </div>
+            <div>
+                <label for="terrainOffset">Offset:</label>
+                <input type="range" id="terrainOffset" min="-1" max="1" step="0.1" value="0.0">
+                <span id="terrainOffsetValue">0.0</span>
+            </div>
+        </div>
     </div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/gl-matrix/2.8.1/gl-matrix-min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
-    <script src="main.js"></script>
+    <script src="main.js" type="module"></script>
     <script>
         // Add functionality to hide controls
         document.getElementById('hideControls').addEventListener('click', function() {
