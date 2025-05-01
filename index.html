@@ -67,13 +67,15 @@
 <body>
     <canvas id="glCanvas" width="640" height="480"></canvas>
 
-    <div class="info-panel" style="position: absolute; top: 10px; left: 10px; color: white;">
-        <div id="fps" style="background-color: rgba(0,0,0,0.5); padding: 5px; margin-bottom: 5px;">FPS: --</div>
-        <div id="viewMode" style="background-color: rgba(0,0,0,0.5); padding: 5px; margin-bottom: 5px;">View Mode: --</div>
-        <div id="position" style="background-color: rgba(0,0,0,0.5); padding: 5px; margin-bottom: 5px;">Position: --</div>
-        <div id="terrain" style="background-color: rgba(0,0,0,0.5); padding: 5px; margin-bottom: 5px;">Terrain Height: --</div>
-        <div id="seed" style="background-color: rgba(0,0,0,0.5); padding: 5px; margin-bottom: 5px;">Terrain Seed: --</div>
-        <div id="instructions" style="background-color: rgba(0,0,0,0.5); padding: 5px;">Press R to regenerate terrain</div>
+    <div class="info-panel" style="position: absolute; top: 10px; left: 10px; color: white; background-color: rgba(0, 0, 0, 0.6); padding: 10px; border-radius: 5px; font-size: 13px; line-height: 1.6;">
+        <div id="fps">FPS: --</div>
+        <div id="viewMode">View Mode: --</div>
+        <div id="position">Position: --</div>
+        <div id="terrain">Terrain Height: --</div>
+        <div id="seed">Terrain Seed: --</div>
+        <div id="terrainAmp">Terrain Amp: --</div>
+        <div id="waterAdj">Water Adj: --</div>
+        <div id="instructions" style="margin-top: 5px; color: #cccccc;">R: Regenerate | Z/X: Ruggedness | N/M: Water Lvl | V: View | Shift: Speed</div>
     </div>
 
     <div id="controls">

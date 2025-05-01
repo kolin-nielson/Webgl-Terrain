@@ -31,6 +31,12 @@ let waterHeight = -0.6; // Height of the water plane
 let waterAlpha = 0.8; // Water transparency
 let time = 0; // For animating water
 
+// --- Dynamic Control Variables ---
+let terrainAmplitudeMultiplier = 1.0; // Factor to scale terrain height variations
+let waterLevelAdjustment = 0.0;      // Offset added to base water height
+const controlStep = 0.1;             // Increment/decrement step for controls
+// --- End Dynamic Control Variables ---
+
 let cameraPosition = [0, 2, 5]; // Initial camera position
 let cameraTarget = [0, 0, 0];  // Where the camera is looking
 let cameraUp = [0, 1, 0];    // Camera's up direction
@@ -75,12 +81,15 @@ let anisotropyExt; // For anisotropic filtering
 // let terrainChunks = []; // Replaced by activeChunks Map
 let activeChunks = new Map(); // Stores currently loaded chunks (key: "x_y", value: chunkObject)
 const CHUNK_SIZE_QUADS = 20; // How many quads per side in a chunk
-const RENDER_DISTANCE_CHUNKS = 20; // Load chunks within this distance (Increased from 4)
+const RENDER_DISTANCE_CHUNKS = 10; // Load chunks within this distance (Reduced from 20 for performance testing)
 // let numChunksX; // Removed - terrain is infinite
 // let numChunksY; // Removed - terrain is infinite
 let lastFrameTime = 0;
 let fpsDisplay;
-// --- End Performance & Infinite Terrain ---
+
+// --- Web Worker for Chunk Generation ---
+let chunkWorker; 
+// --- End Web Worker ---
 
 // Initialize noise generator with a seed
 function initNoise() {
@@ -163,6 +172,14 @@ function main() {
     // Initialize noise generator
     initNoise();
 
+    // --- Initialize Chunk Worker ---
+    chunkWorker = new Worker('chunkWorker.js', { type: 'module' });
+    chunkWorker.onmessage = handleWorkerMessage;
+    chunkWorker.onerror = (error) => {
+        console.error('Chunk Worker Error:', error.message, error);
+    };
+    // --- End Initialize Chunk Worker ---
+
     // Set up terrain control sliders
     document.getElementById('noiseScale').addEventListener('input', updateTerrainParameters);
     document.getElementById('noiseAmplitude').addEventListener('input', updateTerrainParameters);
@@ -185,8 +202,9 @@ function main() {
     // createTerrainChunks(...) is removed - Chunks generated on the fly
     // Note: Water is still a fixed size plane. Making water infinite requires different techniques.
     const waterPlaneSize = 200; // Define a large size for the water plane
-    [waterVertices, waterNormals, waterIndices] = createWater(waterPlaneSize, waterPlaneSize, waterHeight); // Create a reasonably sized water plane for now
-
+    // Initial water creation uses base height
+    [waterVertices, waterNormals, waterIndices] = createWater(waterPlaneSize, waterPlaneSize, waterHeight);
+    
     // Load textures
     loadTerrainTextures(); // Load terrain textures
 
@@ -213,16 +231,16 @@ function setupBuffers() {
     // --- Terrain Chunk Buffers are now created in createSingleChunk ---
     // Remove the loop that iterated over activeChunks here.
 
-    // Water buffers
-    waterVertexBuffer = gl.createBuffer();
+    // Water buffers - Re-buffer if water level changed (or just create initially)
+    if (!waterVertexBuffer) waterVertexBuffer = gl.createBuffer(); // Create if doesn't exist
     gl.bindBuffer(gl.ARRAY_BUFFER, waterVertexBuffer);
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(waterVertices), gl.STATIC_DRAW);
 
-    waterNormalBuffer = gl.createBuffer();
+    if (!waterNormalBuffer) waterNormalBuffer = gl.createBuffer(); // Create if doesn't exist
     gl.bindBuffer(gl.ARRAY_BUFFER, waterNormalBuffer);
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(waterNormals), gl.STATIC_DRAW);
 
-    waterIndexBuffer = gl.createBuffer();
+    if (!waterIndexBuffer) waterIndexBuffer = gl.createBuffer(); // Create if doesn't exist
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, waterIndexBuffer);
     gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(waterIndices), gl.STATIC_DRAW);
 }
@@ -308,10 +326,11 @@ function drawScene(gl, program) {
         let terrainX = cameraPosition[0];
         let terrainZ = cameraPosition[2];
         let terrainY = terrainHeight(terrainX, terrainZ);
+        const currentWaterLevel = waterHeight + waterLevelAdjustment; // Use adjusted level
 
         // Determine desired Y position (hover height above ground or water)
-        let desiredY = Math.max(terrainY + cameraHoverHeight, waterHeight + cameraHoverHeight + 0.2); // Add a bit more height over water
-
+        let desiredY = Math.max(terrainY + cameraHoverHeight, currentWaterLevel + cameraHoverHeight + 0.2);
+        
         // Smoothly interpolate camera height towards the desired height
         cameraPosition[1] = cameraPosition[1] * (1.0 - cameraHeightSmoothing) + desiredY * cameraHeightSmoothing;
 
@@ -380,7 +399,7 @@ function drawTerrain(gl, program, viewMatrix, projectionMatrix, frustumPlanes) {
     gl.uniform1f(gl.getUniformLocation(program, 'uShininess'), shininess);
     gl.uniform3fv(gl.getUniformLocation(program, 'uCameraPosition'), cameraPosition);
     gl.uniform1f(gl.getUniformLocation(program, 'uTime'), time);
-    gl.uniform1f(gl.getUniformLocation(program, 'uWaterHeight'), waterHeight);
+    gl.uniform1f(gl.getUniformLocation(program, 'uWaterHeight'), waterHeight + waterLevelAdjustment); // Use adjusted level
     gl.uniform1i(gl.getUniformLocation(program, 'uIsWater'), 0); // Not water
 
     // Bind Textures (once is enough)
@@ -424,7 +443,7 @@ function drawTerrain(gl, program, viewMatrix, projectionMatrix, frustumPlanes) {
         gl.vertexAttribPointer(texCoordAttribLoc, 2, gl.FLOAT, false, 0, 0);
 
         gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, chunk.indexBuffer);
-        gl.drawElements(gl.TRIANGLES, chunk.indices.length, gl.UNSIGNED_SHORT, 0);
+        gl.drawElements(gl.TRIANGLES, chunk.indicesLength, gl.UNSIGNED_SHORT, 0);
     }
     // --- End Draw Visible Chunks ---
 
@@ -437,7 +456,7 @@ function drawTerrain(gl, program, viewMatrix, projectionMatrix, frustumPlanes) {
 function drawWater(gl, program, viewMatrix, projectionMatrix) {
     gl.useProgram(program);
 
-    // Water still uses the same shader program but with different uniform values
+    // Set common uniforms (same as terrain, but mark as water)
     let modelMatrix = mat4.create();
 
     gl.uniformMatrix4fv(gl.getUniformLocation(program, 'uProjectionMatrix'), false, projectionMatrix);
@@ -449,11 +468,12 @@ function drawWater(gl, program, viewMatrix, projectionMatrix) {
     gl.uniform3fv(gl.getUniformLocation(program, 'uDiffuseColor'), [0.2, 0.5, 0.9]); // Bright blue diffuse
     gl.uniform3fv(gl.getUniformLocation(program, 'uSpecularColor'), [0.8, 0.8, 0.9]); // Strong specular highlights
     gl.uniform1f(gl.getUniformLocation(program, 'uShininess'), 120); // Higher shininess for sharper highlights
-    gl.uniform1i(gl.getUniformLocation(program, 'uIsWater'), 1); // Is water
+    gl.uniform1i(gl.getUniformLocation(program, 'uIsWater'), 1); // IS water
     gl.uniform1f(gl.getUniformLocation(program, 'uTime'), time); // Need time for waves
     gl.uniform3fv(gl.getUniformLocation(program, 'uCameraPosition'), cameraPosition); // Need camera pos for Fresnel
     gl.uniform3fv(gl.getUniformLocation(program, 'uLightPosition'), lightPosition); // Need light pos
-    gl.uniform1f(gl.getUniformLocation(program, 'uWaterHeight'), waterHeight); // Needed? Only if shader uses it directly. Keep for now.
+    gl.uniform1f(gl.getUniformLocation(program, 'uWaterHeight'), waterHeight + waterLevelAdjustment); // Use adjusted level
+    gl.uniform1f(gl.getUniformLocation(program, 'uWaterAlpha'), waterAlpha); 
 
     // Draw water vertices
     gl.bindBuffer(gl.ARRAY_BUFFER, waterVertexBuffer);
@@ -501,6 +521,31 @@ function handleKeyDown(event) {
     // Prevent default scrolling behavior when arrow keys are pressed
     if (['w', 'a', 's', 'd', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(event.key.toLowerCase())) {
         event.preventDefault();
+    }
+
+    // Handle single-press actions
+    switch (event.key.toLowerCase()) {
+        case 'z': // Increase terrain ruggedness
+            terrainAmplitudeMultiplier += controlStep;
+            console.log("Terrain Amplitude Multiplier:", terrainAmplitudeMultiplier.toFixed(2));
+            refreshAllChunks(); // Regenerate terrain
+            break;
+        case 'x': // Decrease terrain ruggedness
+            terrainAmplitudeMultiplier = Math.max(0.1, terrainAmplitudeMultiplier - controlStep); // Prevent going below 0.1
+            console.log("Terrain Amplitude Multiplier:", terrainAmplitudeMultiplier.toFixed(2));
+            refreshAllChunks(); // Regenerate terrain
+            break;
+        case 'n': // Raise water level
+            waterLevelAdjustment += controlStep / 2; // Water level changes slower
+            console.log("Water Level Adjustment:", waterLevelAdjustment.toFixed(2));
+            updateWaterBuffers(); // Update water mesh
+            break;
+        case 'm': // Lower water level
+            waterLevelAdjustment -= controlStep / 2; // Water level changes slower
+            console.log("Water Level Adjustment:", waterLevelAdjustment.toFixed(2));
+            updateWaterBuffers(); // Update water mesh
+            break;
+        // Add other single-press key actions here if needed
     }
 }
 
@@ -872,7 +917,24 @@ function createSingleChunk(chunkX, chunkY) {
     // Add chunk to map *before* creating buffers (in case creation is async/delayed)
     activeChunks.set(chunkKey, chunk);
 
-    // --- Buffer Creation ---
+    // --- Instead of creating buffers here, post message to worker ---
+    const terrainParams = { 
+        terrainSeed, noiseScale, noiseOctaves, noiseAmplitude, 
+        noisePersistence, terrainFlatness, terrainOffset, 
+        terrainAmplitudeMultiplier // Include the multiplier
+    };
+
+    chunkWorker.postMessage({
+        chunkX,
+        chunkY,
+        terrainParams,
+        CHUNK_SIZE_QUADS,
+        QUAD_SIZE
+    });
+    // --- Buffers will be created when worker responds in handleWorkerMessage ---
+
+    /* Removed direct buffer creation
+    // --- Buffer Creation --- 
     // Create and buffer data immediately (can be moved to a separate function or web worker later)
     chunk.vertexBuffer = gl.createBuffer();
     gl.bindBuffer(gl.ARRAY_BUFFER, chunk.vertexBuffer);
@@ -889,10 +951,64 @@ function createSingleChunk(chunkX, chunkY) {
     chunk.indexBuffer = gl.createBuffer();
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, chunk.indexBuffer);
     gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, chunk.indices, gl.STATIC_DRAW);
-
+    
     chunk.isBuffered = true; // Mark as buffered
     // --- End Buffer Creation ---
+    */
 }
+
+// --- Worker Message Handler ---
+function handleWorkerMessage(e) {
+    const { 
+        chunkKey, vertices, normals, texCoords, indices, 
+        boundingBox, indicesLength 
+    } = e.data;
+
+    const chunk = activeChunks.get(chunkKey);
+    if (!chunk) {
+        console.warn(`Received worker message for inactive chunk: ${chunkKey}`);
+        return; // Chunk might have been unloaded while worker was busy
+    }
+
+    // Create buffers from received data (ArrayBuffers)
+    try {
+        chunk.vertexBuffer = gl.createBuffer();
+        if (!chunk.vertexBuffer) throw new Error("Failed to create vertex buffer");
+        gl.bindBuffer(gl.ARRAY_BUFFER, chunk.vertexBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, vertices, gl.STATIC_DRAW);
+
+        chunk.normalBuffer = gl.createBuffer();
+        if (!chunk.normalBuffer) throw new Error("Failed to create normal buffer");
+        gl.bindBuffer(gl.ARRAY_BUFFER, chunk.normalBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, normals, gl.STATIC_DRAW);
+
+        chunk.texCoordBuffer = gl.createBuffer();
+        if (!chunk.texCoordBuffer) throw new Error("Failed to create texCoord buffer");
+        gl.bindBuffer(gl.ARRAY_BUFFER, chunk.texCoordBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, texCoords, gl.STATIC_DRAW);
+
+        chunk.indexBuffer = gl.createBuffer();
+        if (!chunk.indexBuffer) throw new Error("Failed to create index buffer");
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, chunk.indexBuffer);
+        gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, indices, gl.STATIC_DRAW);
+        
+        // Store necessary info back into the chunk object
+        chunk.boundingBox = boundingBox;
+        chunk.indicesLength = indicesLength; // Store the length for drawElements
+        chunk.isBuffered = true; // Mark as ready to draw
+
+    } catch (error) {
+        console.error(`Error creating buffers from worker data for chunk ${chunkKey}:`, error);
+        // Clean up any buffers that might have been created before the error
+        if (chunk.vertexBuffer) gl.deleteBuffer(chunk.vertexBuffer);
+        if (chunk.normalBuffer) gl.deleteBuffer(chunk.normalBuffer);
+        if (chunk.texCoordBuffer) gl.deleteBuffer(chunk.texCoordBuffer);
+        if (chunk.indexBuffer) gl.deleteBuffer(chunk.indexBuffer);
+        // Remove the failed chunk from the map so it might be requested again later
+        activeChunks.delete(chunkKey); 
+    }
+}
+// --- End Worker Message Handler ---
 
 // --- Frustum Culling Helpers ---
 
@@ -982,7 +1098,14 @@ function terrainHeight(x, y) {
         height = sign * Math.pow(Math.abs(height), 1 / flatnessFactor);
     }
 
-    // Add a slight offset to raise the overall terrain slightly
+    // Gentle background undulation - Kept reduced amplitude
+    height += Math.sin(x * 0.05 + 3.0) * 0.2;
+    
+    // --- Apply Global Amplitude Multiplier --- 
+    height *= terrainAmplitudeMultiplier;
+    // --- End Apply Global Amplitude Multiplier --- 
+
+    // Add a slight offset to raise the overall terrain slightly (after scaling)
     height += 0.2 + terrainOffset;
 
     return height;
@@ -1137,4 +1260,47 @@ function updateUI() {
     if (seedElement) {
         seedElement.textContent = `Terrain Seed: ${Math.floor(terrainSeed)}`;
     }
+
+    // Update terrain amplitude display
+    const terrainAmpElement = document.getElementById('terrainAmp');
+    if (terrainAmpElement) {
+        terrainAmpElement.textContent = `Terrain Amp: ${terrainAmplitudeMultiplier.toFixed(2)}`;
+    }
+    
+    // Update water level adjustment display
+    const waterAdjElement = document.getElementById('waterAdj');
+    if (waterAdjElement) {
+        const currentWaterLevel = waterHeight + waterLevelAdjustment;
+        waterAdjElement.textContent = `Water Adj: ${waterLevelAdjustment.toFixed(2)} (Level: ${currentWaterLevel.toFixed(2)})`;
+    }
+}
+
+// Function to regenerate and re-buffer water geometry based on current level
+function updateWaterBuffers() {
+    const waterPlaneSize = 200; // Keep consistent with initial creation
+    const currentWaterHeight = waterHeight + waterLevelAdjustment;
+    [waterVertices, waterNormals, waterIndices] = createWater(waterPlaneSize, waterPlaneSize, currentWaterHeight);
+    
+    // Re-buffer data
+    gl.bindBuffer(gl.ARRAY_BUFFER, waterVertexBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(waterVertices), gl.STATIC_DRAW);
+    gl.bindBuffer(gl.ARRAY_BUFFER, waterNormalBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(waterNormals), gl.STATIC_DRAW);
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, waterIndexBuffer);
+    gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(waterIndices), gl.STATIC_DRAW);
+}
+
+// Function to clear and force reload of all active chunks
+function refreshAllChunks() {
+    console.log("Refreshing all terrain chunks...");
+    // Clean up existing chunk buffers
+    for (const chunk of activeChunks.values()) {
+        if (chunk.vertexBuffer) gl.deleteBuffer(chunk.vertexBuffer);
+        if (chunk.normalBuffer) gl.deleteBuffer(chunk.normalBuffer);
+        if (chunk.texCoordBuffer) gl.deleteBuffer(chunk.texCoordBuffer);
+        if (chunk.indexBuffer) gl.deleteBuffer(chunk.indexBuffer);
+    }
+    activeChunks.clear(); // Remove all chunks from the map
+    manageChunks(); // Force chunk manager to reload based on current camera pos
+    console.log("Terrain chunks refreshed.");
 }
